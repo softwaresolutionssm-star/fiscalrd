@@ -29,6 +29,9 @@ export class SaleItem extends BaseEntity {
   @Column('decimal', { precision: 12, scale: 2, default: 0 })
   discountAmount: number; // computed discount amount
 
+  @Column({ type: 'varchar', length: 10, default: 'UND' })
+  unitOfMeasure: string; // UND, KGM, LTR, MTR, etc. (DGII UNM codes)
+
   @Column({ type: 'int', default: 18 })
   itbisRate: number;
 

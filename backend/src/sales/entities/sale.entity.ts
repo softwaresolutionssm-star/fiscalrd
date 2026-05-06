@@ -67,13 +67,19 @@ export class Sale extends BaseEntity {
 
   // ─── e-CF / Alanube / DGII ───────────────────────────────────────────────
   @Column({ type: 'varchar', nullable: true })
-  trackId: string | null; // ID de seguimiento en Alanube
+  trackId: string | null;
 
   @Column({ type: 'varchar', default: 'NO_ENVIADO' })
   dgiiStatus: string; // NO_ENVIADO | PENDIENTE | ACEPTADO | RECHAZADO
 
   @Column({ type: 'timestamptz', nullable: true })
-  alanubeSentAt: Date | null; // Fecha en que se envió a Alanube
+  alanubeSentAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  securityCode: string | null; // Código de Seguridad DGII
+
+  @Column({ type: 'timestamptz', nullable: true })
+  signatureDate: Date | null; // Fecha de Firma Digital
 
   @OneToMany(() => SaleItem, (item) => item.sale, { cascade: true, eager: true })
   items: SaleItem[];

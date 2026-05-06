@@ -402,29 +402,35 @@ export class SalesService {
       const result = await this.alanubeService.sendEcf(apiKey, sandbox, {
         issuerRnc:          tenant.rnc,
         issuerName:         tenant.businessName,
+        issuerAddress:      (tenant as any).address ?? undefined,
+        issuerPhone:        (tenant as any).phone ?? undefined,
         receiverRncCedula:  sale.customerRncCedula ?? undefined,
         receiverName:       sale.customerName ?? 'Consumidor Final',
         ecfType:            sale.ncfType,
         sequence:           sale.ncfNumber ?? '',
         issueDate:          new Date(sale.saleDate).toISOString().split('T')[0],
+        relatedNcf:         sale.relatedNcf ?? undefined,
         subtotal:           Number(sale.subtotal),
         itbisTotal:         Number(sale.itbisTotal),
         total:              Number(sale.total),
         paymentMethod:      sale.paymentMethod ?? 'efectivo',
         items: sale.items.map(i => ({
-          description:  i.productName,
-          quantity:     Number(i.quantity),
-          unitPrice:    Number(i.unitPrice),
-          itbisRate:    Number(i.itbisRate),
-          subtotal:     Number(i.subtotal),
-          itbisAmount:  Number(i.itbisAmount),
-          total:        Number(i.total),
+          description:    i.productName,
+          quantity:       Number(i.quantity),
+          unitOfMeasure:  i.unitOfMeasure ?? 'UND',
+          unitPrice:      Number(i.unitPrice),
+          itbisRate:      Number(i.itbisRate),
+          subtotal:       Number(i.subtotal),
+          itbisAmount:    Number(i.itbisAmount),
+          total:          Number(i.total),
         })),
       });
 
-      sale.trackId      = result.trackId ?? null;
-      sale.dgiiStatus   = result.dgiiStatus ?? 'PENDIENTE';
+      sale.trackId       = result.trackId ?? null;
+      sale.dgiiStatus    = result.dgiiStatus ?? 'PENDIENTE';
       sale.alanubeSentAt = new Date();
+      sale.securityCode  = result.securityCode ?? null;
+      sale.signatureDate = result.signatureDate ? new Date(result.signatureDate) : null;
       await this.salesRepo.save(sale);
 
       this.logger.log(`e-CF enviado: ${sale.ncfNumber} → trackId=${result.trackId} status=${result.dgiiStatus}`);
@@ -465,18 +471,23 @@ export class SalesService {
       total: Number(sale.total),
       paymentMethod: sale.paymentMethod,
       dgiiStatus: sale.dgiiStatus,
+      securityCode: sale.securityCode ?? null,
+      signatureDate: sale.signatureDate ?? null,
       items: sale.items.map(i => ({
-        productName: i.productName,
-        quantity: Number(i.quantity),
-        unitPrice: Number(i.unitPrice),
-        itbisRate: Number(i.itbisRate ?? 0),
-        total: Number(i.total),
+        productName:    i.productName,
+        quantity:       Number(i.quantity),
+        unitOfMeasure:  i.unitOfMeasure ?? 'UND',
+        unitPrice:      Number(i.unitPrice),
+        itbisRate:      Number(i.itbisRate ?? 0),
+        itbisAmount:    Number(i.itbisAmount ?? 0),
+        subtotal:       Number(i.subtotal ?? 0),
+        total:          Number(i.total),
       })),
       issuer: tenant ? {
-        name: tenant.businessName,
-        rnc: tenant.rnc,
+        name:    tenant.businessName,
+        rnc:     tenant.rnc,
         address: (tenant as any).address,
-        phone: (tenant as any).phone,
+        phone:   (tenant as any).phone,
         logoUrl: (tenant as any).logoUrl ?? null,
       } : null,
     };

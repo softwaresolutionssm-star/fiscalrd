@@ -5,6 +5,7 @@ import { firstValueFrom } from 'rxjs';
 export interface EcfItem {
   description: string;
   quantity: number;
+  unitOfMeasure: string; // UND, KGM, LTR, MTR, etc.
   unitPrice: number;
   itbisRate: number;
   subtotal: number;
@@ -16,6 +17,8 @@ export interface EcfPayload {
   // Emisor
   issuerRnc: string;
   issuerName: string;
+  issuerAddress?: string;
+  issuerPhone?: string;
   // Receptor
   receiverRncCedula?: string;
   receiverName?: string;
@@ -23,6 +26,7 @@ export interface EcfPayload {
   ecfType: string;       // E31, E32, etc.
   sequence: string;      // e.g. E3200000001
   issueDate: string;     // YYYY-MM-DD
+  relatedNcf?: string;   // NCF relacionado (E33/E34)
   // Totales
   subtotal: number;
   itbisTotal: number;
@@ -37,6 +41,8 @@ export interface EcfResult {
   trackId?: string;
   dgiiStatus?: 'ACEPTADO' | 'RECHAZADO' | 'PENDIENTE';
   signedXml?: string;
+  securityCode?: string;
+  signatureDate?: string;
   errorMessage?: string;
 }
 
@@ -46,12 +52,6 @@ export class AlanubeService {
 
   constructor(private readonly http: HttpService) {}
 
-  /**
-   * Envía un e-CF a Alanube para firma y transmisión a la DGII.
-   * @param apiKey  API key del negocio (tenant)
-   * @param sandbox Si es true usa sandbox.alanube.co, si no api.alanube.co
-   * @param payload Datos del comprobante
-   */
   async sendEcf(apiKey: string, sandbox: boolean, payload: EcfPayload): Promise<EcfResult> {
     const baseUrl = sandbox
       ? 'https://sandbox.alanube.co/dominicana/v1'
@@ -68,29 +68,24 @@ export class AlanubeService {
         }),
       );
 
-      this.logger.log(`e-CF enviado a Alanube: trackId=${response.data?.trackId}`);
+      const data = response.data ?? {};
+      this.logger.log(`e-CF enviado a Alanube: trackId=${data.trackId}`);
 
       return {
         success: true,
-        trackId: response.data?.trackId,
-        dgiiStatus: response.data?.status ?? 'PENDIENTE',
-        signedXml: response.data?.signedXml,
+        trackId: data.trackId,
+        dgiiStatus: data.status ?? 'PENDIENTE',
+        signedXml: data.signedXml,
+        securityCode: data.securityCode ?? data.codigoSeguridad ?? null,
+        signatureDate: data.signatureDateTime ?? data.fechaFirma ?? null,
       };
     } catch (error: any) {
       const msg = error?.response?.data?.message ?? error?.message ?? 'Error desconocido';
       this.logger.error(`Error enviando e-CF a Alanube: ${msg}`);
-
-      return {
-        success: false,
-        errorMessage: msg,
-        dgiiStatus: 'RECHAZADO',
-      };
+      return { success: false, errorMessage: msg, dgiiStatus: 'RECHAZADO' };
     }
   }
 
-  /**
-   * Consulta el estado de un e-CF en la DGII vía Alanube.
-   */
   async getEcfStatus(apiKey: string, sandbox: boolean, trackId: string): Promise<EcfResult> {
     const baseUrl = sandbox
       ? 'https://sandbox.alanube.co/dominicana/v1'
@@ -102,17 +97,16 @@ export class AlanubeService {
           headers: { Authorization: `Bearer ${apiKey}` },
         }),
       );
-
+      const data = response.data ?? {};
       return {
         success: true,
         trackId,
-        dgiiStatus: response.data?.status,
+        dgiiStatus: data.status,
+        securityCode: data.securityCode ?? data.codigoSeguridad ?? null,
+        signatureDate: data.signatureDateTime ?? data.fechaFirma ?? null,
       };
     } catch (error: any) {
-      return {
-        success: false,
-        errorMessage: error?.message,
-      };
+      return { success: false, errorMessage: error?.message };
     }
   }
 
@@ -121,6 +115,8 @@ export class AlanubeService {
       issuer: {
         rnc: payload.issuerRnc,
         businessName: payload.issuerName,
+        ...(payload.issuerAddress && { address: payload.issuerAddress }),
+        ...(payload.issuerPhone && { phone: payload.issuerPhone }),
       },
       receiver: {
         rncCedula: payload.receiverRncCedula ?? '',
@@ -131,6 +127,7 @@ export class AlanubeService {
         sequence: payload.sequence,
         issueDate: payload.issueDate,
         paymentMethod: payload.paymentMethod ?? 'efectivo',
+        ...(payload.relatedNcf && { relatedNcf: payload.relatedNcf }),
       },
       totals: {
         subtotal: payload.subtotal,
@@ -140,6 +137,7 @@ export class AlanubeService {
       items: payload.items.map((item) => ({
         description: item.description,
         quantity: item.quantity,
+        unitOfMeasure: item.unitOfMeasure ?? 'UND',
         unitPrice: item.unitPrice,
         itbisRate: item.itbisRate,
         subtotal: item.subtotal,
