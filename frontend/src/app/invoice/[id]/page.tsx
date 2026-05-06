@@ -37,15 +37,18 @@ interface Invoice {
   } | null;
 }
 
+// DGII official document titles (Ley 32-23)
 const NCF_TITLES: Record<string, string> = {
   E31: 'Factura de Crédito Fiscal Electrónica',
   E32: 'Factura de Consumo Electrónica',
   E33: 'Nota de Débito Electrónica',
   E34: 'Nota de Crédito Electrónica',
-  E41: 'Comprobante de Compras',
-  E43: 'Comprobante para Gastos Menores',
-  E44: 'Comprobante para Regímenes Especiales',
-  E45: 'Comprobante para el Gobierno',
+  E41: 'Comprobante Electrónico de Compras',
+  E43: 'Comprobante Electrónico para Gastos Menores',
+  E44: 'Comprobante Electrónico para Regímenes Especiales',
+  E45: 'Comprobante Electrónico Gubernamental',
+  E46: 'Comprobante Electrónico para Exportaciones',
+  E47: 'Comprobante Electrónico para Pagos al Exterior',
 };
 
 const DGII_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -55,14 +58,47 @@ const DGII_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   NO_ENVIADO: { label: 'No enviado a DGII',   color: '#6b7280' },
 };
 
+// Covers both our internal codes and DGII numeric codes 1-8
 const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Efectivo', card: 'Tarjeta', transfer: 'Transferencia', credit: 'Crédito',
+  cash:     'Efectivo',
+  transfer: 'Transferencia / Depósito',
+  card:     'Tarjeta Débito/Crédito',
+  credit:   'Venta a Crédito',
+  mixed:    'Pago Mixto',
+  '1':      'Efectivo',
+  '2':      'Cheque / Transferencia / Depósito',
+  '3':      'Tarjeta Débito/Crédito',
+  '4':      'Venta a Crédito',
+  '5':      'Bonos o Regalos',
+  '6':      'Permuta',
+  '7':      'Nota de Crédito',
+  '8':      'Otros',
 };
 
 function fmt(n: number) {
   return n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Converts any date string to DD-MM-YYYY (DGII format)
+function toDGIIDate(d: string | null | undefined): string {
+  if (!d) return '';
+  const s = String(d).substring(0, 10); // YYYY-MM-DD
+  const [y, m, day] = s.split('-');
+  return `${day}-${m}-${y}`;
+}
+
+// Converts ISO datetime to DD-MM-YYYY HH:MM:SS in Santo Domingo time (UTC-4)
+function toDGIIDateTime(d: string | null | undefined): string {
+  if (!d) return '';
+  const normalized = d.endsWith('Z') || d.includes('+') ? d : d + 'Z';
+  const dt = new Date(normalized);
+  // UTC-4 (America/Santo_Domingo has no DST)
+  const sd = new Date(dt.getTime() - 4 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(sd.getUTCDate())}-${pad(sd.getUTCMonth() + 1)}-${sd.getUTCFullYear()} ${pad(sd.getUTCHours())}:${pad(sd.getUTCMinutes())}:${pad(sd.getUTCSeconds())}`;
+}
+
+// Human-readable date for display (not DGII format)
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—';
   return new Intl.DateTimeFormat('es-DO', {
@@ -109,16 +145,26 @@ export default function PublicInvoicePage() {
   const dgiiInfo = DGII_STATUS_LABELS[invoice.dgiiStatus] ?? { label: invoice.dgiiStatus, color: '#6b7280' };
   const ncfTitle = NCF_TITLES[invoice.ncfType] ?? 'Comprobante Fiscal Electrónico';
 
-  // QR con datos de la factura según estándar DGII
-  const qrData = [
-    invoice.issuer?.rnc ?? '',
-    invoice.ncfNumber ?? '',
-    invoice.saleDate ? invoice.saleDate.toString().substring(0, 10) : '',
-    fmt(invoice.total),
-    invoice.securityCode ?? '',
-  ].join('|');
-  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(qrData)}`;
-  const dgiiVerifyUrl = `https://ecf.dgii.gov.do/ecf/ConsultaTimbre?RNCEmisor=${invoice.issuer?.rnc ?? ''}&NCF=${invoice.ncfNumber ?? ''}&Monto=${invoice.total}`;
+  // Build DGII-compliant verification URL per Ley 32-23
+  // E32 (Consumo) → fc.dgii.gov.do/eCF/ConsultaTimbreFC
+  // All others    → ecf.dgii.gov.do/ecf/ConsultaTimbre (full params)
+  const isConsumerInvoice = invoice.ncfType === 'E32';
+  const fechaEmision = toDGIIDate(invoice.saleDate);
+  const fechaFirma   = toDGIIDateTime(invoice.signatureDate);
+  const rncEmisor    = invoice.issuer?.rnc ?? '';
+  const rncComprador = invoice.customerRncCedula || '00000000000';
+  const encf         = invoice.ncfNumber ?? '';
+  const montoTotal   = fmt(invoice.total).replace(/,/g, ''); // remove thousand separator
+
+  let dgiiVerifyUrl: string;
+  if (isConsumerInvoice) {
+    dgiiVerifyUrl = `https://fc.dgii.gov.do/eCF/ConsultaTimbreFC?RncEmisor=${encodeURIComponent(rncEmisor)}&ENCF=${encodeURIComponent(encf)}&MontoTotal=${encodeURIComponent(montoTotal)}&Codigoseguridad=${encodeURIComponent(invoice.securityCode ?? '')}`;
+  } else {
+    dgiiVerifyUrl = `https://ecf.dgii.gov.do/ecf/ConsultaTimbre?RncEmisor=${encodeURIComponent(rncEmisor)}&RncComprador=${encodeURIComponent(rncComprador)}&ENCF=${encodeURIComponent(encf)}&FechaEmision=${encodeURIComponent(fechaEmision)}&MontoTotal=${encodeURIComponent(montoTotal)}&FechaFirma=${encodeURIComponent(fechaFirma)}&CodigoSeguridad=${encodeURIComponent(invoice.securityCode ?? '')}`;
+  }
+
+  // QR encodes the DGII verification URL (not raw data)
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(dgiiVerifyUrl)}`;
 
   return (
     <div style={{ fontFamily: 'Arial, sans-serif', maxWidth: 760, margin: '0 auto', padding: '24px 16px', color: '#111' }}>
@@ -126,7 +172,7 @@ export default function PublicInvoicePage() {
       {/* Botón imprimir */}
       <div style={{ textAlign: 'right', marginBottom: 16 }} className="no-print">
         <button onClick={() => window.print()} style={{ background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, padding: '8px 20px', fontSize: 14, cursor: 'pointer' }}>
-          Imprimir
+          Imprimir / Guardar PDF
         </button>
       </div>
 
@@ -147,13 +193,13 @@ export default function PublicInvoicePage() {
             </div>
           </div>
 
-          {/* Tipo y número de NCF */}
+          {/* Tipo y número de e-NCF */}
           <div style={{ textAlign: 'right' }}>
-            <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e3a8a' }}>{ncfTitle}</p>
-            <p style={{ margin: '6px 0 0', fontSize: 13, color: '#374151' }}>e-NCF:</p>
-            <p style={{ margin: '2px 0 0', fontSize: 18, fontWeight: 700, letterSpacing: '0.05em', color: '#111' }}>{invoice.ncfNumber}</p>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#1e3a8a' }}>{ncfTitle}</p>
+            <p style={{ margin: '6px 0 2px', fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>e-NCF</p>
+            <p style={{ margin: 0, fontSize: 19, fontWeight: 700, letterSpacing: '0.06em', color: '#111', fontFamily: 'monospace' }}>{invoice.ncfNumber}</p>
             <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6b7280' }}>
-              Fecha Emisión: {new Date(invoice.saleDate).toLocaleDateString('es-DO', { year: 'numeric', month: 'long', day: 'numeric' })}
+              Fecha Emisión: {new Date(invoice.saleDate).toLocaleDateString('es-DO', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}
             </p>
           </div>
         </div>
@@ -175,19 +221,24 @@ export default function PublicInvoicePage() {
           </span>
           <div style={{ border: '2px solid #e5e7eb', borderRadius: 6, padding: 6, background: '#fff' }}>
             <a href={dgiiVerifyUrl} target="_blank" rel="noopener noreferrer">
-              <img src={qrSrc} alt="QR DGII" width={120} height={120} />
+              <img src={qrSrc} alt="Código QR DGII" width={130} height={130} />
             </a>
           </div>
+
+          {/* Código de Seguridad — campo obligatorio en la RI según DGII */}
           {invoice.securityCode && (
             <p style={{ margin: '4px 0 0', fontSize: 10, color: '#374151', textAlign: 'center' }}>
-              <strong>Cód. Seguridad:</strong> {invoice.securityCode}
+              <strong>Cód. Seguridad:</strong> <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{invoice.securityCode}</span>
             </p>
           )}
+
+          {/* Fecha y Hora de Firma Digital */}
           {invoice.signatureDate && (
             <p style={{ margin: '2px 0 0', fontSize: 10, color: '#374151', textAlign: 'center' }}>
               <strong>Firma Digital:</strong> {fmtDate(invoice.signatureDate)}
             </p>
           )}
+
           <a href={dgiiVerifyUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 9, color: '#2563eb', marginTop: 2 }}>
             Verificar en DGII
           </a>
@@ -199,22 +250,24 @@ export default function PublicInvoicePage() {
         <thead>
           <tr style={{ background: '#1e3a8a', color: '#fff' }}>
             <th style={{ padding: '8px 10px', textAlign: 'left' }}>Descripción</th>
-            <th style={{ padding: '8px 10px', textAlign: 'center' }}>U/M</th>
-            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Cant.</th>
-            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Precio Unit.</th>
-            <th style={{ padding: '8px 10px', textAlign: 'right' }}>ITBIS</th>
-            <th style={{ padding: '8px 10px', textAlign: 'right' }}>Valor</th>
+            <th style={{ padding: '8px 6px', textAlign: 'center' }}>U/M</th>
+            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Cant.</th>
+            <th style={{ padding: '8px 8px', textAlign: 'right' }}>Precio Unit.</th>
+            <th style={{ padding: '8px 6px', textAlign: 'center' }}>ITBIS%</th>
+            <th style={{ padding: '8px 8px', textAlign: 'right' }}>ITBIS</th>
+            <th style={{ padding: '8px 8px', textAlign: 'right' }}>Valor Total</th>
           </tr>
         </thead>
         <tbody>
           {invoice.items.map((item, idx) => (
             <tr key={idx} style={{ background: idx % 2 === 0 ? '#fff' : '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
               <td style={{ padding: '7px 10px' }}>{item.productName}</td>
-              <td style={{ padding: '7px 10px', textAlign: 'center', color: '#6b7280', fontSize: 11 }}>{item.unitOfMeasure ?? 'UND'}</td>
-              <td style={{ padding: '7px 10px', textAlign: 'right' }}>{item.quantity}</td>
-              <td style={{ padding: '7px 10px', textAlign: 'right' }}>RD$ {fmt(item.unitPrice)}</td>
-              <td style={{ padding: '7px 10px', textAlign: 'right' }}>RD$ {fmt(item.itbisAmount ?? 0)}</td>
-              <td style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 600 }}>RD$ {fmt(item.total)}</td>
+              <td style={{ padding: '7px 6px', textAlign: 'center', color: '#6b7280', fontSize: 11 }}>{item.unitOfMeasure ?? 'UND'}</td>
+              <td style={{ padding: '7px 6px', textAlign: 'right' }}>{item.quantity}</td>
+              <td style={{ padding: '7px 8px', textAlign: 'right' }}>RD$ {fmt(item.unitPrice)}</td>
+              <td style={{ padding: '7px 6px', textAlign: 'center', color: '#6b7280' }}>{item.itbisRate}%</td>
+              <td style={{ padding: '7px 8px', textAlign: 'right' }}>RD$ {fmt(item.itbisAmount ?? 0)}</td>
+              <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 600 }}>RD$ {fmt(item.total)}</td>
             </tr>
           ))}
         </tbody>
@@ -222,26 +275,29 @@ export default function PublicInvoicePage() {
 
       {/* ── TOTALES ── */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <div style={{ minWidth: 260 }}>
+        <div style={{ minWidth: 280 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
-            <span style={{ color: '#6b7280' }}>Subtotal Gravado</span>
+            <span style={{ color: '#6b7280' }}>Subtotal Gravado (Base ITBIS)</span>
             <span>RD$ {fmt(invoice.subtotal)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
             <span style={{ color: '#6b7280' }}>Total ITBIS</span>
             <span>RD$ {fmt(invoice.itbisTotal)}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 16, fontWeight: 700, borderTop: '2px solid #1e3a8a', marginTop: 4 }}>
-            <span>TOTAL</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 17, fontWeight: 700, borderTop: '2px solid #1e3a8a', marginTop: 4 }}>
+            <span>TOTAL A PAGAR</span>
             <span>RD$ {fmt(invoice.total)}</span>
           </div>
         </div>
       </div>
 
       {/* ── PIE ── */}
-      <div style={{ marginTop: 32, textAlign: 'center', fontSize: 11, color: '#9ca3af', borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
-        <p style={{ margin: 0 }}>Comprobante Fiscal Electrónico (e-CF) emitido conforme a la Ley 32-23 de la República Dominicana.</p>
-        <p style={{ margin: '4px 0 0' }}>Emitido a través del sistema FiscalRD — Verifique autenticidad en: ecf.dgii.gov.do</p>
+      <div style={{ marginTop: 28, textAlign: 'center', fontSize: 10, color: '#9ca3af', borderTop: '1px solid #e5e7eb', paddingTop: 12 }}>
+        <p style={{ margin: 0, fontWeight: 600, color: '#6b7280' }}>Comprobante Fiscal Electrónico (e-CF) — Ley 32-23 — República Dominicana</p>
+        <p style={{ margin: '3px 0 0' }}>Emitido mediante el Sistema FiscalRD. Verifique autenticidad en: <strong>ecf.dgii.gov.do</strong></p>
+        {invoice.securityCode && (
+          <p style={{ margin: '3px 0 0' }}>Código de Seguridad DGII: <strong style={{ fontFamily: 'monospace' }}>{invoice.securityCode}</strong></p>
+        )}
       </div>
 
       <style>{`

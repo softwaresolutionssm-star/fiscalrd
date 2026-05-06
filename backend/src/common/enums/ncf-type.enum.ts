@@ -7,6 +7,8 @@ export enum NcfType {
   E43 = 'E43', // Gastos Menores Electrónico
   E44 = 'E44', // Régimen Especial Electrónico
   E45 = 'E45', // Gubernamental Electrónico
+  E46 = 'E46', // Comprobante para Exportaciones
+  E47 = 'E47', // Comprobante para Pagos al Exterior
 }
 
 export const NCF_LABELS: Record<NcfType, string> = {
@@ -18,10 +20,12 @@ export const NCF_LABELS: Record<NcfType, string> = {
   [NcfType.E43]: 'E43 - Gastos Menores',
   [NcfType.E44]: 'E44 - Régimen Especial',
   [NcfType.E45]: 'E45 - Gubernamental',
+  [NcfType.E46]: 'E46 - Exportaciones',
+  [NcfType.E47]: 'E47 - Pagos al Exterior',
 };
 
 // e-CF emitidos en ventas (lado receptor: cliente)
-export const SALE_NCF_TYPES = [NcfType.E31, NcfType.E32, NcfType.E33, NcfType.E34, NcfType.E44, NcfType.E45];
+export const SALE_NCF_TYPES = [NcfType.E31, NcfType.E32, NcfType.E33, NcfType.E34, NcfType.E44, NcfType.E45, NcfType.E46, NcfType.E47];
 
 // e-CF de compras (lado emisor: proveedor informal)
 export const PURCHASE_NCF_TYPES = [NcfType.E41, NcfType.E43];

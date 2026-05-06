@@ -413,7 +413,8 @@ export class SalesService {
         subtotal:           Number(sale.subtotal),
         itbisTotal:         Number(sale.itbisTotal),
         total:              Number(sale.total),
-        paymentMethod:      sale.paymentMethod ?? 'efectivo',
+        paymentMethod:      sale.paymentMethod ?? 'cash',
+        paymentSplits:      sale.paymentSplits ?? undefined,
         items: sale.items.map(i => ({
           description:    i.productName,
           quantity:       Number(i.quantity),

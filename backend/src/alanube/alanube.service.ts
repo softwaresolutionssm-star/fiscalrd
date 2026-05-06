@@ -7,10 +7,11 @@ export interface EcfItem {
   quantity: number;
   unitOfMeasure: string; // UND, KGM, LTR, MTR, etc.
   unitPrice: number;
-  itbisRate: number;
+  itbisRate: number;     // 18, 16, or 0
   subtotal: number;
   itbisAmount: number;
   total: number;
+  indicadorBienoServicio?: 1 | 2; // 1=Bien, 2=Servicio (DGII)
 }
 
 export interface EcfPayload {
@@ -32,8 +33,9 @@ export interface EcfPayload {
   itbisTotal: number;
   total: number;
   items: EcfItem[];
-  // Pago
-  paymentMethod?: string;
+  // Pago — FormaPago DGII: 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Bonos 6=Permuta 7=Nota Crédito 8=Otros
+  paymentMethod?: string;  // internal code: cash|transfer|card|credit|mixed
+  paymentSplits?: Array<{ method: string; amount: number }>; // for mixed payments
 }
 
 export interface EcfResult {
@@ -44,6 +46,26 @@ export interface EcfResult {
   securityCode?: string;
   signatureDate?: string;
   errorMessage?: string;
+}
+
+// Maps our internal payment codes to DGII FormaPago numeric codes (Ley 32-23)
+const PAYMENT_METHOD_CODES: Record<string, number> = {
+  cash:     1, // Efectivo
+  transfer: 2, // Cheque/Transferencia/Depósito
+  card:     3, // Tarjeta Débito/Crédito
+  credit:   4, // Venta a Crédito
+  gift:     5, // Bonos o Regalos
+  barter:   6, // Permuta
+  note:     7, // Nota de Crédito
+  mixed:    8, // Otros / Pago Mixto
+};
+
+function mapPaymentCode(method: string | undefined): number {
+  if (!method) return 1;
+  // Already a number string
+  const n = Number(method);
+  if (!isNaN(n) && n >= 1 && n <= 8) return n;
+  return PAYMENT_METHOD_CODES[method] ?? 1;
 }
 
 @Injectable()
@@ -76,8 +98,8 @@ export class AlanubeService {
         trackId: data.trackId,
         dgiiStatus: data.status ?? 'PENDIENTE',
         signedXml: data.signedXml,
-        securityCode: data.securityCode ?? data.codigoSeguridad ?? null,
-        signatureDate: data.signatureDateTime ?? data.fechaFirma ?? null,
+        securityCode: data.securityCode ?? data.codigoSeguridad ?? data.codigoSeguridadeCF ?? null,
+        signatureDate: data.signatureDateTime ?? data.fechaHoraFirma ?? data.fechaFirma ?? null,
       };
     } catch (error: any) {
       const msg = error?.response?.data?.message ?? error?.message ?? 'Error desconocido';
@@ -102,8 +124,8 @@ export class AlanubeService {
         success: true,
         trackId,
         dgiiStatus: data.status,
-        securityCode: data.securityCode ?? data.codigoSeguridad ?? null,
-        signatureDate: data.signatureDateTime ?? data.fechaFirma ?? null,
+        securityCode: data.securityCode ?? data.codigoSeguridad ?? data.codigoSeguridadeCF ?? null,
+        signatureDate: data.signatureDateTime ?? data.fechaHoraFirma ?? data.fechaFirma ?? null,
       };
     } catch (error: any) {
       return { success: false, errorMessage: error?.message };
@@ -111,6 +133,16 @@ export class AlanubeService {
   }
 
   private buildAlanubeBody(payload: EcfPayload) {
+    // Build payment section — use TablaFormasPago for split payments
+    const paymentSection = (payload.paymentSplits && payload.paymentSplits.length > 0)
+      ? {
+          tablaFormasPago: payload.paymentSplits.map(p => ({
+            formaPago: mapPaymentCode(p.method),
+            montoPago: p.amount,
+          })),
+        }
+      : { formaPago: mapPaymentCode(payload.paymentMethod) };
+
     return {
       issuer: {
         rnc: payload.issuerRnc,
@@ -119,14 +151,15 @@ export class AlanubeService {
         ...(payload.issuerPhone && { phone: payload.issuerPhone }),
       },
       receiver: {
-        rncCedula: payload.receiverRncCedula ?? '',
+        // DGII requires "00000000000" for anonymous consumers (E32 sin RNC)
+        rncCedula: payload.receiverRncCedula || '00000000000',
         name: payload.receiverName ?? 'Consumidor Final',
       },
       document: {
         type: payload.ecfType,
         sequence: payload.sequence,
         issueDate: payload.issueDate,
-        paymentMethod: payload.paymentMethod ?? 'efectivo',
+        ...paymentSection,
         ...(payload.relatedNcf && { relatedNcf: payload.relatedNcf }),
       },
       totals: {
@@ -143,6 +176,8 @@ export class AlanubeService {
         subtotal: item.subtotal,
         itbisAmount: item.itbisAmount,
         total: item.total,
+        // IndicadorBienoServicio: 1=Bien (default), 2=Servicio
+        ...(item.indicadorBienoServicio && { indicadorBienoServicio: item.indicadorBienoServicio }),
       })),
     };
   }
