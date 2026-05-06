@@ -1,14 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { Payroll, PayrollStatus, PayrollType, PayrollFrequency } from './entities/payroll.entity';
 import { CreatePayrollDto } from './dto/create-payroll.dto';
-import { Employee } from '../employees/entities/employee.entity';
+import { Employee, EmployeeStatus } from '../employees/entities/employee.entity';
 import { AccountingService } from '../accounting/accounting.service';
 import { Expense } from '../expenses/entities/expense.entity';
+import { NotificationsService } from '../notifications/notifications.service';
+import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
 export class PayrollService {
+  private readonly logger = new Logger(PayrollService.name);
+
   constructor(
     @InjectRepository(Payroll)
     private readonly payrollRepo: Repository<Payroll>,
@@ -16,7 +21,10 @@ export class PayrollService {
     private readonly empRepo: Repository<Employee>,
     @InjectRepository(Expense)
     private readonly expenseRepo: Repository<Expense>,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
     private readonly accountingService: AccountingService,
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   private r(v: number) { return Math.round(v * 100) / 100; }
@@ -313,6 +321,66 @@ export class PayrollService {
       ].map(v => `"${v}"`).join(',');
     });
     return [header, ...rows].join('\r\n');
+  }
+
+  // ─── Automatización: genera nóminas en borrador el 1° de cada mes ──────────
+
+  @Cron('0 7 1 * *') // 7:00 AM el día 1 de cada mes
+  async autoGenerateMonthlyPayrolls() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const period = `${year}-${String(month).padStart(2, '0')}`;
+    const periodStart = `${period}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const periodEnd = `${period}-${String(lastDay).padStart(2, '0')}`;
+
+    this.logger.log(`[Nómina Auto] Generando borradores para período ${period}`);
+
+    const tenants = await this.tenantRepo.find();
+
+    for (const tenant of tenants) {
+      try {
+        const employees = await this.empRepo.find({
+          where: { tenantId: tenant.id, status: EmployeeStatus.ACTIVE },
+        });
+
+        const eligible = employees.filter(e => e.baseSalary && Number(e.baseSalary) > 0);
+        let created = 0;
+
+        for (const emp of eligible) {
+          const existing = await this.payrollRepo.findOne({
+            where: { tenantId: tenant.id, employeeId: emp.id, period, type: PayrollType.REGULAR },
+          });
+          if (existing) continue;
+
+          await this.create(tenant.id, {
+            employeeId: emp.id,
+            period,
+            periodStart,
+            periodEnd,
+            type: PayrollType.REGULAR,
+            frequency: PayrollFrequency.MONTHLY,
+            baseSalary: Number(emp.baseSalary),
+          } as CreatePayrollDto, emp.branchId ?? null);
+          created++;
+        }
+
+        if (created > 0) {
+          const mes = now.toLocaleString('es-DO', { month: 'long', year: 'numeric' });
+          await this.notificationsService.create(
+            tenant.id,
+            'info',
+            'Nóminas generadas automáticamente',
+            `Se generaron ${created} nómina${created !== 1 ? 's' : ''} en borrador para ${mes}. Revísalas y apruébalas en el módulo de Nómina.`,
+            '/dashboard/payroll',
+          );
+          this.logger.log(`[Nómina Auto] Tenant ${tenant.id}: ${created} nóminas creadas para ${period}`);
+        }
+      } catch (err) {
+        this.logger.error(`[Nómina Auto] Error en tenant ${tenant.id}: ${err.message}`);
+      }
+    }
   }
 
   async exportAchCsv(tenantId: string, period?: string): Promise<string> {

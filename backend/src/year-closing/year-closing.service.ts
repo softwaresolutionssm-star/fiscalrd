@@ -82,8 +82,8 @@ export class YearClosingService {
       // Nóminas pendientes de pago del año
       manager.query(`
         SELECT COUNT(*) AS count FROM payrolls
-        WHERE "tenantId" = $1 AND "payPeriodEnd" BETWEEN $2 AND $3 AND "status" != 'paid'
-      `, [tenantId, yearStart, yearEnd]),
+        WHERE "tenantId" = $1 AND LEFT("period", 4) = $2 AND "status" != 'paid'
+      `, [tenantId, String(year)]),
 
       // Cuentas por cobrar vencidas
       manager.query(`
@@ -176,14 +176,14 @@ export class YearClosingService {
     // ── Nómina ──────────────────────────────────────────────────────────────
     const payrollRes = await manager.query(`
       SELECT
-        COALESCE(SUM("netAmount"), 0) AS "totalPayroll",
+        COALESCE(SUM("netSalary"), 0) AS "totalPayroll",
         COUNT(*) AS "payrollCount"
       FROM payrolls
       WHERE "tenantId" = $1
-        AND "payPeriodEnd" BETWEEN $2 AND $3
+        AND LEFT("period", 4) = $2
         AND "status" = 'paid'
         ${branchFilter('payrolls')}
-    `, [tenantId, yearStart, yearEnd]);
+    `, [tenantId, String(year)]);
 
     const totalSales     = Number(salesRes[0]?.totalSales     ?? 0);
     const totalPurchases = Number(purchasesRes[0]?.totalPurchases ?? 0);
