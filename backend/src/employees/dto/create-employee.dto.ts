@@ -50,4 +50,8 @@ export class CreateEmployeeDto {
   @IsString()
   @IsOptional()
   branchId?: string;
+
+  @IsEnum(['WEEKLY', 'BIWEEKLY', 'MONTHLY'])
+  @IsOptional()
+  payrollFrequency?: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
 }

@@ -11,7 +11,7 @@ import { formatCurrency } from '@/lib/utils';
 import { useBranch } from '@/contexts/branch-context';
 import { useAuth } from '@/contexts/auth-context';
 
-interface Employee { id: string; firstName: string; lastName: string; cedula?: string; position?: string; department?: string; baseSalary?: number; status: string; branchId?: string | null; }
+interface Employee { id: string; firstName: string; lastName: string; cedula?: string; position?: string; department?: string; baseSalary?: number; status: string; branchId?: string | null; payrollFrequency?: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY'; }
 interface BranchHistoryEntry { id: string; fromBranchId: string | null; toBranchId: string | null; transferredByName: string; notes: string | null; createdAt: string; }
 
 export default function EmployeesPage() {
@@ -21,7 +21,7 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Employee | null>(null);
-  const [form, setForm] = useState({ firstName: '', lastName: '', cedula: '', position: '', department: '', baseSalary: '', hireDate: '', branchId: '' });
+  const [form, setForm] = useState({ firstName: '', lastName: '', cedula: '', position: '', department: '', baseSalary: '', hireDate: '', branchId: '', payrollFrequency: 'MONTHLY' });
   const [transferTarget, setTransferTarget] = useState<Employee | null>(null);
   const [transferBranchId, setTransferBranchId] = useState('');
   const [transferNotes, setTransferNotes] = useState('');
@@ -39,7 +39,7 @@ export default function EmployeesPage() {
       if (!payload.branchId) delete payload.branchId;
       editing ? await api.patch(`/employees/${editing.id}`, payload) : await api.post('/employees', payload);
       toast.success(editing ? 'Empleado actualizado' : 'Empleado creado');
-      setShowForm(false); setEditing(null); setForm({ firstName: '', lastName: '', cedula: '', position: '', department: '', baseSalary: '', hireDate: '', branchId: '' }); load();
+      setShowForm(false); setEditing(null); setForm({ firstName: '', lastName: '', cedula: '', position: '', department: '', baseSalary: '', hireDate: '', branchId: '', payrollFrequency: 'MONTHLY' }); load();
     } catch { toast.error('Error al guardar'); }
   };
 
@@ -94,7 +94,14 @@ export default function EmployeesPage() {
               <input placeholder="Cédula (11 dígitos)" value={form.cedula} onChange={e => setForm({...form, cedula: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               <input placeholder="Cargo" value={form.position} onChange={e => setForm({...form, position: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               <input placeholder="Departamento" value={form.department} onChange={e => setForm({...form, department: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-              <input type="number" step="0.01" placeholder="Salario Base" value={form.baseSalary} onChange={e => setForm({...form, baseSalary: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" step="0.01" placeholder="Salario Base" value={form.baseSalary} onChange={e => setForm({...form, baseSalary: e.target.value})} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                <select value={form.payrollFrequency} onChange={e => setForm({...form, payrollFrequency: e.target.value})} className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                  <option value="MONTHLY">Pago Mensual</option>
+                  <option value="BIWEEKLY">Pago Quincenal</option>
+                  <option value="WEEKLY">Pago Semanal</option>
+                </select>
+              </div>
               <input type="date" placeholder="Fecha Contratación" value={form.hireDate} onChange={e => setForm({...form, hireDate: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               {currentUser?.role === 'owner' && hasBranches && (
                 <select value={form.branchId} onChange={e => setForm({...form, branchId: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
@@ -211,7 +218,7 @@ export default function EmployeesPage() {
                     {isMultiBranch && currentUser?.role === 'owner' && (
                       <button title="Transferir sucursal" onClick={() => { setTransferTarget(emp); setTransferBranchId(emp.branchId ?? ''); }} className="text-slate-400 hover:text-purple-600"><GitBranch size={15} /></button>
                     )}
-                    <button onClick={() => { setEditing(emp); setForm({ firstName: emp.firstName, lastName: emp.lastName, cedula: emp.cedula ?? '', position: emp.position ?? '', department: emp.department ?? '', baseSalary: emp.baseSalary ? String(emp.baseSalary) : '', hireDate: '', branchId: emp.branchId ?? '' }); setShowForm(true); }} className="text-slate-400 hover:text-blue-600"><Pencil size={15} /></button>
+                    <button onClick={() => { setEditing(emp); setForm({ firstName: emp.firstName, lastName: emp.lastName, cedula: emp.cedula ?? '', position: emp.position ?? '', department: emp.department ?? '', baseSalary: emp.baseSalary ? String(emp.baseSalary) : '', hireDate: '', branchId: emp.branchId ?? '', payrollFrequency: emp.payrollFrequency ?? 'MONTHLY' }); setShowForm(true); }} className="text-slate-400 hover:text-blue-600"><Pencil size={15} /></button>
                     <button onClick={() => remove(emp.id)} className="text-slate-400 hover:text-red-600"><Trash2 size={15} /></button>
                   </div>
                 </td>

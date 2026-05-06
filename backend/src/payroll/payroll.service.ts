@@ -323,10 +323,11 @@ export class PayrollService {
     return [header, ...rows].join('\r\n');
   }
 
-  // ─── Automatización: genera nóminas en borrador el 1° de cada mes ──────────
+  // ─── Automatización: genera nóminas en borrador según frecuencia ────────────
 
-  @Cron('0 7 1 * *') // 7:00 AM el día 1 de cada mes
-  async autoGenerateMonthlyPayrolls() {
+  /** Mensual — día 1 de cada mes a las 7am */
+  @Cron('0 7 1 * *')
+  async autoGenerateMonthly() {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
@@ -334,9 +335,59 @@ export class PayrollService {
     const periodStart = `${period}-01`;
     const lastDay = new Date(year, month, 0).getDate();
     const periodEnd = `${period}-${String(lastDay).padStart(2, '0')}`;
+    const label = now.toLocaleString('es-DO', { month: 'long', year: 'numeric' });
 
-    this.logger.log(`[Nómina Auto] Generando borradores para período ${period}`);
+    await this.runAutoGeneration('MONTHLY', PayrollFrequency.MONTHLY, period, periodStart, periodEnd, label);
+  }
 
+  /** Quincenal — día 1 (primera quincena) y día 16 (segunda quincena) */
+  @Cron('0 7 1,16 * *')
+  async autoGenerateBiweekly() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const mm = String(month).padStart(2, '0');
+    const isFirstHalf = now.getDate() === 1;
+    const period    = isFirstHalf ? `${year}-${mm}-Q1` : `${year}-${mm}-Q2`;
+    const periodStart = isFirstHalf ? `${year}-${mm}-01` : `${year}-${mm}-16`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const periodEnd   = isFirstHalf ? `${year}-${mm}-15` : `${year}-${mm}-${String(lastDay).padStart(2, '0')}`;
+    const quincena = isFirstHalf ? 'primera quincena' : 'segunda quincena';
+    const label = `${quincena} de ${now.toLocaleString('es-DO', { month: 'long', year: 'numeric' })}`;
+
+    await this.runAutoGeneration('BIWEEKLY', PayrollFrequency.BIWEEKLY, period, periodStart, periodEnd, label);
+  }
+
+  /** Semanal — cada lunes a las 7am */
+  @Cron('0 7 * * 1')
+  async autoGenerateWeekly() {
+    const now = new Date();
+    // Calcular inicio (lunes) y fin (domingo) de la semana
+    const monday = new Date(now);
+    monday.setDate(now.getDate());
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = (d: Date) => d.toISOString().split('T')[0];
+    // Número de semana ISO
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+    const period = `${now.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+    const periodStart = fmt(monday);
+    const periodEnd = fmt(sunday);
+    const label = `semana del ${periodStart} al ${periodEnd}`;
+
+    await this.runAutoGeneration('WEEKLY', PayrollFrequency.WEEKLY, period, periodStart, periodEnd, label);
+  }
+
+  private async runAutoGeneration(
+    frequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY',
+    payrollFreq: PayrollFrequency,
+    period: string,
+    periodStart: string,
+    periodEnd: string,
+    label: string,
+  ) {
+    this.logger.log(`[Nómina Auto] ${frequency} → período ${period}`);
     const tenants = await this.tenantRepo.find();
 
     for (const tenant of tenants) {
@@ -345,7 +396,9 @@ export class PayrollService {
           where: { tenantId: tenant.id, status: EmployeeStatus.ACTIVE },
         });
 
-        const eligible = employees.filter(e => e.baseSalary && Number(e.baseSalary) > 0);
+        const eligible = employees.filter(
+          e => e.baseSalary && Number(e.baseSalary) > 0 && (e.payrollFrequency ?? 'MONTHLY') === frequency,
+        );
         let created = 0;
 
         for (const emp of eligible) {
@@ -360,22 +413,21 @@ export class PayrollService {
             periodStart,
             periodEnd,
             type: PayrollType.REGULAR,
-            frequency: PayrollFrequency.MONTHLY,
+            frequency: payrollFreq,
             baseSalary: Number(emp.baseSalary),
           } as CreatePayrollDto, emp.branchId ?? null);
           created++;
         }
 
         if (created > 0) {
-          const mes = now.toLocaleString('es-DO', { month: 'long', year: 'numeric' });
           await this.notificationsService.create(
             tenant.id,
             'info',
             'Nóminas generadas automáticamente',
-            `Se generaron ${created} nómina${created !== 1 ? 's' : ''} en borrador para ${mes}. Revísalas y apruébalas en el módulo de Nómina.`,
+            `Se generaron ${created} nómina${created !== 1 ? 's' : ''} en borrador para la ${label}. Revísalas y apruébalas en el módulo de Nómina.`,
             '/dashboard/payroll',
           );
-          this.logger.log(`[Nómina Auto] Tenant ${tenant.id}: ${created} nóminas creadas para ${period}`);
+          this.logger.log(`[Nómina Auto] Tenant ${tenant.id}: ${created} nóminas ${frequency} para ${period}`);
         }
       } catch (err) {
         this.logger.error(`[Nómina Auto] Error en tenant ${tenant.id}: ${err.message}`);

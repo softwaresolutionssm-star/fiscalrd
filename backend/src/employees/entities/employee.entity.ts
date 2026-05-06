@@ -49,4 +49,8 @@ export class Employee extends BaseEntity {
   // Linked system user (optional)
   @Column({ type: 'varchar', nullable: true })
   userId: string | null;
+
+  // Frecuencia de pago para generación automática de nómina
+  @Column({ type: 'varchar', length: 10, default: 'MONTHLY' })
+  payrollFrequency: 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY';
 }
