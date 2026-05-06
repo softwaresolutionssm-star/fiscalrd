@@ -40,6 +40,7 @@ import { YearClosingModule } from './year-closing/year-closing.module';
 import { ServiceOrdersModule } from './service-orders/service-orders.module';
 import { AppointmentsModule } from './appointments/appointments.module';
 import { RestaurantTablesModule } from './restaurant-tables/restaurant-tables.module';
+import { ExchangeRateModule } from './exchange-rate/exchange-rate.module';
 
 @Module({
   imports: [
@@ -107,6 +108,7 @@ import { RestaurantTablesModule } from './restaurant-tables/restaurant-tables.mo
     ServiceOrdersModule,
     AppointmentsModule,
     RestaurantTablesModule,
+    ExchangeRateModule,
     TypeOrmModule.forFeature([Tenant]),
   ],
   providers: [

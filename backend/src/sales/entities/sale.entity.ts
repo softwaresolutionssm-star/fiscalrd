@@ -81,6 +81,16 @@ export class Sale extends BaseEntity {
   @Column({ type: 'timestamptz', nullable: true })
   signatureDate: Date | null; // Fecha de Firma Digital
 
+  // ─── Multimoneda ─────────────────────────────────────────────────────────────
+  @Column({ type: 'varchar', length: 3, default: 'DOP' })
+  currency: string; // DOP | USD
+
+  @Column({ type: 'decimal', precision: 10, scale: 4, nullable: true })
+  exchangeRate: number | null; // DOP por 1 USD al momento de la venta
+
+  @Column({ type: 'decimal', precision: 12, scale: 2, nullable: true })
+  totalUsd: number | null; // Total en USD (cuando currency = USD)
+
   @OneToMany(() => SaleItem, (item) => item.sale, { cascade: true, eager: true })
   items: SaleItem[];
 }

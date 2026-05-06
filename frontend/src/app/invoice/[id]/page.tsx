@@ -27,6 +27,9 @@ interface Invoice {
   dgiiStatus: string;
   securityCode: string | null;
   signatureDate: string | null;
+  currency?: string;
+  exchangeRate?: number | null;
+  totalUsd?: number | null;
   items: InvoiceItem[];
   issuer: {
     name: string;
@@ -275,7 +278,27 @@ export default function PublicInvoicePage() {
 
       {/* ── TOTALES ── */}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <div style={{ minWidth: 280 }}>
+        <div style={{ minWidth: 300 }}>
+          {/* If USD invoice, show USD line first */}
+          {invoice.currency === 'USD' && invoice.exchangeRate && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 6, padding: '8px 12px', marginBottom: 10, fontSize: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ color: '#15803d', fontWeight: 600 }}>Moneda de Transacción</span>
+                <span style={{ color: '#15803d', fontWeight: 700 }}>USD (Dólar Americano)</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}>
+                <span style={{ color: '#166534' }}>Tasa de Cambio</span>
+                <span style={{ color: '#166534' }}>1 USD = RD$ {fmt(invoice.exchangeRate)}</span>
+              </div>
+              {invoice.totalUsd && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                  <span style={{ color: '#166534' }}>Total en USD</span>
+                  <span style={{ color: '#166534' }}>$ {fmt(invoice.totalUsd)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
             <span style={{ color: '#6b7280' }}>Subtotal Gravado (Base ITBIS)</span>
             <span>RD$ {fmt(invoice.subtotal)}</span>
@@ -285,7 +308,7 @@ export default function PublicInvoicePage() {
             <span>RD$ {fmt(invoice.itbisTotal)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: 17, fontWeight: 700, borderTop: '2px solid #1e3a8a', marginTop: 4 }}>
-            <span>TOTAL A PAGAR</span>
+            <span>TOTAL A PAGAR (RD$)</span>
             <span>RD$ {fmt(invoice.total)}</span>
           </div>
         </div>

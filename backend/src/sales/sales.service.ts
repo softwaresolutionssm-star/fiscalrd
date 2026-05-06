@@ -60,11 +60,19 @@ export class SalesService {
   ) {}
 
   async create(tenantId: string, dto: CreateSaleDto, branchId: string | null = null): Promise<Sale> {
-    // Calculate items
+    const currency = dto.currency ?? 'DOP';
+    const exchangeRate = currency === 'USD' ? (dto.exchangeRate ?? 61.5) : null;
+
+    // Calculate items — prices from the client are in the sale currency (DOP or USD).
+    // All amounts are stored in DOP in the DB for DGII compliance.
     const items = dto.items.map((itemDto) => {
       const itbisRate = itemDto.itbisRate ?? 18;
       const discountPct = itemDto.discountPct ?? 0;
-      const baseSubtotal = Number(itemDto.unitPrice) * Number(itemDto.quantity);
+      // If the sale is in USD, convert the price to DOP before storing
+      const unitPriceDOP = currency === 'USD'
+        ? Math.round(Number(itemDto.unitPrice) * (exchangeRate ?? 1) * 100) / 100
+        : Number(itemDto.unitPrice);
+      const baseSubtotal = unitPriceDOP * Number(itemDto.quantity);
       const discountAmount = Math.round(baseSubtotal * (discountPct / 100) * 100) / 100;
       const subtotal = Math.round((baseSubtotal - discountAmount) * 100) / 100;
       const itbisAmount = Math.round(subtotal * (itbisRate / 100) * 100) / 100;
@@ -72,7 +80,7 @@ export class SalesService {
       return this.saleItemsRepo.create({
         productId: itemDto.productId,
         productName: itemDto.productName,
-        unitPrice: itemDto.unitPrice,
+        unitPrice: unitPriceDOP, // always stored in DOP
         quantity: itemDto.quantity,
         discountPct,
         discountAmount,
@@ -118,6 +126,9 @@ export class SalesService {
       subtotal: Math.round(subtotal * 100) / 100,
       itbisTotal: Math.round(itbisTotal * 100) / 100,
       total: Math.round(total * 100) / 100,
+      currency,
+      exchangeRate,
+      totalUsd: exchangeRate ? Math.round((total / exchangeRate) * 100) / 100 : null,
       items,
     });
 
@@ -415,6 +426,9 @@ export class SalesService {
         total:              Number(sale.total),
         paymentMethod:      sale.paymentMethod ?? 'cash',
         paymentSplits:      sale.paymentSplits ?? undefined,
+        currency:           sale.currency !== 'DOP' ? sale.currency : undefined,
+        exchangeRate:       sale.exchangeRate ? Number(sale.exchangeRate) : undefined,
+        totalForeign:       sale.totalUsd ? Number(sale.totalUsd) : undefined,
         items: sale.items.map(i => ({
           description:    i.productName,
           quantity:       Number(i.quantity),
@@ -474,6 +488,9 @@ export class SalesService {
       dgiiStatus: sale.dgiiStatus,
       securityCode: sale.securityCode ?? null,
       signatureDate: sale.signatureDate ?? null,
+      currency: sale.currency ?? 'DOP',
+      exchangeRate: sale.exchangeRate ? Number(sale.exchangeRate) : null,
+      totalUsd: sale.totalUsd ? Number(sale.totalUsd) : null,
       items: sale.items.map(i => ({
         productName:    i.productName,
         quantity:       Number(i.quantity),

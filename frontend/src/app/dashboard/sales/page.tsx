@@ -22,6 +22,8 @@ interface Sale {
   status: string;
   dgiiStatus?: string;
   trackId?: string;
+  currency?: string;
+  totalUsd?: number;
 }
 
 const statusLabel: Record<string, { label: string; color: string }> = {
@@ -202,7 +204,14 @@ export default function SalesPage() {
                   <td className="px-4 py-3 text-slate-500">{formatDate(s.saleDate)}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(s.subtotal)}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(s.itbisTotal)}</td>
-                  <td className="px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(s.total)}</td>
+                  <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                    {formatCurrency(s.total)}
+                    {s.currency === 'USD' && s.totalUsd && (
+                      <div className="text-xs font-normal text-green-600 flex items-center justify-end gap-1">
+                        <span>≈ ${s.totalUsd.toFixed(2)} USD</span>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${st.color}`}>{st.label}</span>
                   </td>

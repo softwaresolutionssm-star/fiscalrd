@@ -5,11 +5,21 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('es-DO', {
-    style: 'currency',
-    currency: 'DOP',
-  }).format(amount);
+export function formatCurrency(amount: number, currency: string = 'DOP'): string {
+  if (currency === 'USD') {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  }
+  return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP' }).format(amount);
+}
+
+/** Convert a DOP amount to USD given the exchange rate (DOP per 1 USD). */
+export function dopToUsd(amountDOP: number, exchangeRate: number): number {
+  return Math.round((amountDOP / exchangeRate) * 100) / 100;
+}
+
+/** Convert a USD amount to DOP given the exchange rate (DOP per 1 USD). */
+export function usdToDop(amountUSD: number, exchangeRate: number): number {
+  return Math.round(amountUSD * exchangeRate * 100) / 100;
 }
 
 const TZ = 'America/Santo_Domingo';

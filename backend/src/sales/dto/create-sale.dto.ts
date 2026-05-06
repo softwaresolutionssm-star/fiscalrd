@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, ValidateNested } from 'class-validator';
+import { IsArray, IsDateString, IsEnum, IsIn, IsNotEmpty, IsNumber, IsOptional, IsPositive, IsString, IsUUID, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { NcfType } from '../../common/enums/ncf-type.enum';
 import { CreateSaleItemDto } from './create-sale-item.dto';
@@ -39,6 +39,15 @@ export class CreateSaleDto {
   @IsOptional()
   @IsArray()
   paymentSplits?: Array<{ method: string; amount: number }>;
+
+  @IsIn(['DOP', 'USD'])
+  @IsOptional()
+  currency?: string; // DOP (default) | USD
+
+  @IsNumber({ maxDecimalPlaces: 4 })
+  @IsPositive()
+  @IsOptional()
+  exchangeRate?: number; // Tasa DOP/USD al momento de la venta (obligatorio si currency=USD)
 
   @IsArray()
   @ValidateNested({ each: true })

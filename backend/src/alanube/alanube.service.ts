@@ -36,6 +36,10 @@ export interface EcfPayload {
   // Pago — FormaPago DGII: 1=Efectivo 2=Cheque/Transfer 3=Tarjeta 4=Crédito 5=Bonos 6=Permuta 7=Nota Crédito 8=Otros
   paymentMethod?: string;  // internal code: cash|transfer|card|credit|mixed
   paymentSplits?: Array<{ method: string; amount: number }>; // for mixed payments
+  // Multimoneda (OtraMoneda en DGII XML — Ley 32-23 Art. 18)
+  currency?: string;       // ISO currency code: USD, EUR, etc.
+  exchangeRate?: number;   // DOP per 1 foreign currency unit
+  totalForeign?: number;   // total in the foreign currency
 }
 
 export interface EcfResult {
@@ -167,6 +171,16 @@ export class AlanubeService {
         itbis: payload.itbisTotal,
         total: payload.total,
       },
+      // OtraMoneda: present when invoice is issued in a foreign currency (DGII Ley 32-23)
+      ...(payload.currency && payload.currency !== 'DOP' && payload.exchangeRate && {
+        otherCurrency: {
+          currency: payload.currency,
+          exchangeRate: payload.exchangeRate,
+          total: payload.totalForeign ?? Math.round((payload.total / payload.exchangeRate) * 100) / 100,
+          subtotal: Math.round((payload.subtotal / payload.exchangeRate) * 100) / 100,
+          itbis: Math.round((payload.itbisTotal / payload.exchangeRate) * 100) / 100,
+        },
+      }),
       items: payload.items.map((item) => ({
         description: item.description,
         quantity: item.quantity,
