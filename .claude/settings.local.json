@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /c/Users/saulm/fiscalrd/backend/src/app.*)",
+      "Bash(ls c:/Users/saulm/fiscalrd/frontend/src/app/invoice/[id]/page.tsx)",
+      "Bash(grep -r \"AuditLog\\\\|audit\\\\|ActivityLog\" c:/Users/saulm/fiscalrd/backend/src --include=*.ts -l)",
+      "Bash(node -e \"const o = require\\(''otplib''\\); const uri = o.generateURI; console.log\\(uri.toString\\(\\).substring\\(0, 300\\)\\)\")",
+      "Bash(node -e \"const { verify, generateSecret } = require\\(''otplib''\\); const s = generateSecret\\(\\); console.log\\(verify.toString\\(\\).substring\\(0, 200\\)\\)\")",
+      "Bash(node -e \"const { verify, generateSecret } = require\\(''otplib''\\); const s = generateSecret\\(\\); verify\\({ token: ''123456'', secret: s }\\).then\\(r => console.log\\(typeof r, JSON.stringify\\(r\\)\\)\\)\")",
+      "Bash(find /c/Users/saulm/fiscalrd/frontend -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx \\\\\\))",
+      "Bash(find /c/Users/saulm/fiscalrd/frontend/src -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(node -e ':*)"
+    ]
+  }
+}
